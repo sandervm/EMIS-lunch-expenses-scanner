@@ -13,10 +13,6 @@ def authenticate(api_key, username, password):
     return requests.request(
         'POST', API_LOGIN_URL, data=payload, headers=headers)
 
-    assert response.status_code == 200, 'Login failed'
-
-    return 
-
 def submit_expenses(api_key, session_token, properties):
     payload = {
         'type': 6,
