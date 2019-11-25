@@ -7,7 +7,7 @@ Simple commandline interface to scan one or multiple expenses receipts images fo
 - virtualenv
 
 ## Setup
-Before you can install the package you need to following packages installed:
+Before you can install the package you need to have the following packages installed:
 
 `sudo apt install tesseract-ocr libtesseract-dev`
 

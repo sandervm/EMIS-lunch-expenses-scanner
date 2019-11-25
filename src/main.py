@@ -2,7 +2,6 @@ import cv2
 import re
 import os
 import argparse
-import numpy as np
 import pytesseract
 import requests
 import getpass
@@ -229,8 +228,18 @@ def do_input_action(properties):
         do_input_action(properties)
 
 def submit(properties):
-    token = authenticate(properties['api_key'],
-        properties['args'].username, properties['args'].password)
+    response = authenticate(
+        properties['api_key'],
+        properties['args'].username,
+        properties['args'].password
+    )
+
+    if response.status_code is not 200:
+        print_results(properties)
+        print(f'{colors.RED}Authenticaion failed ({response.status_code} {response.json().get("message")}){colors.END}')
+        do_input_action(properties)
+
+    token = response.json()['data']['sessionToken']
     response = submit_expenses(properties['api_key'], token, properties)
 
     if response.status_code is not 201:
