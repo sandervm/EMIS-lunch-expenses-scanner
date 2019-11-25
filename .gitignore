@@ -1,0 +1,5 @@
+.pyc
+venv
+__pycache__
+emis_lunch_expenses_scanner.egg-info
+emis.key
