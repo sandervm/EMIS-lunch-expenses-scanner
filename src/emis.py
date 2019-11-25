@@ -7,7 +7,7 @@ API_EXPENSES_URL = 'https://emis.elements.nl/api/v1/expenses'
 def authenticate(api_key, username, password):
     headers = {
         'X-Emis-Api-Key': api_key,
-        'User-Agent': 'EMIS-expenses-scanner/0.0.1',
+        'User-Agent': 'EMIS-lunch-expenses-scanner/0.0.1',
     }
     payload = { 'username': username, 'password': password }
     response = requests.request(
@@ -28,6 +28,7 @@ def submit_expenses(api_key, session_token, properties):
     headers = {
         'X-Emis-Api-Key': api_key,
         'X-Emis-Api-Session-Token': session_token,
+        'User-Agent': 'EMIS-lunch-expenses-scanner/0.0.1',
     }
 
     with open(properties['image'], 'rb') as file:
@@ -35,5 +36,5 @@ def submit_expenses(api_key, session_token, properties):
             'file': (os.path.basename(properties['image']), file),
         }
 
-        return requests.request(
-            'POST', API_EXPENSES_URL, data=payload, files=files, headers=headers)
+        return requests.post(
+            API_EXPENSES_URL, data=payload, files=files, headers=headers)

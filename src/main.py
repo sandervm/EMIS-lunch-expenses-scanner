@@ -25,7 +25,7 @@ class colors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-parser = argparse.ArgumentParser(description='EMIS expenses scanner')
+parser = argparse.ArgumentParser(description='EMIS Lunch Expenses Scanner')
 parser.add_argument('-u', '--username',
                     default='',
                     help='your EMIS username')
@@ -57,7 +57,7 @@ parser.add_argument('-l', '--lang',
                     default='nld',
                     help='the Tesseract language to use, default: "nld"')
 
-ACTION_CHOICES = ['submit', 'skip', 'set price', 'set date', 'exit']
+ACTION_CHOICES = ['submit', 'skip', 'set price', 'set date', 'show image', 'exit']
 
 # TODO  `clear` on linux, `cls` on win, dunno on mac
 clear = lambda: os.system('clear')
@@ -82,18 +82,31 @@ def clean_date_string(date_str):
 
     return date_str
 
+def get_api_key():
+    api_key = None
+    try:
+        with open('emis.key', 'r') as file:
+            api_key = file.read()
+    except IOError:
+        pass
+
+    if not api_key:
+        print(f'{colors.RED}EMIS API key not found!{colors.END}')
+        with open('emis.key', 'w') as file:
+            api_key = input('API key: ').rstrip('\n')
+            file.write(api_key)
+
+    return api_key
+
 def main():
     clear()
 
-    api_key = None
-    with open('emis.key', 'r') as file:
-        api_key = file.read()
-
-    if not api_key:
-        print(f'{colors.RED}No API key found, please create: "emis.key"')
-        return
+    api_key = get_api_key()
 
     args = parser.parse_args()
+
+    if not args.username:
+        args.username = input('Username: ')
 
     if not args.password:
         args.password = getpass.getpass('Password: ')
@@ -108,20 +121,19 @@ def main():
         clear()
         print(f'Processing "{image}"...')
 
-        originalImage = cv2.imread(image, cv2.IMREAD_COLOR)
-        grayscaleImage = cv2.cvtColor(originalImage, cv2.COLOR_BGR2GRAY)
-        gaussianImage = cv2.adaptiveThreshold(grayscaleImage, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-        thres, threshholdImage = cv2.threshold(gaussianImage, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        resultImage = cv2.medianBlur(threshholdImage, 5)
+        original_image = cv2.imread(image, cv2.IMREAD_COLOR)
+        grayscale_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
+        gaussian_image = cv2.adaptiveThreshold(grayscale_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+        threshold, threshold_image = cv2.threshold(gaussian_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        result_image = cv2.medianBlur(threshold_image, 5)
 
-        text = pytesseract.image_to_string(resultImage, config=(f'--tessdata-dir ./data -l {args.lang} --oem 1 --psm 3'))
-
-        clear()
+        text = pytesseract.image_to_string(result_image, config=(f'--tessdata-dir ./data -l {args.lang} --oem 1 --psm 3'))
 
         prices_matches = re.findall(r'^.*(\d+ *[,\.]{1} *\d{2}).*$', text, re.MULTILINE)
-        prices_matches = list(map(lambda x: float(x.replace(',', '.').replace(' ', '')), prices_matches))
-        prices_matches = list(set(prices_matches))
-        prices_matches.sort(reverse=True)
+        if prices_matches:
+            prices_matches = list(map(lambda x: float(x.replace(',', '.').replace(' ', '')), prices_matches))
+            prices_matches = list(set(prices_matches))
+            prices_matches.sort(reverse=True)
 
         date_match = re.search(r'^.*(\d{2}[ \-—\/]+\d{2}[ \-—\/]+\d{4}).*$', text, re.MULTILINE)
         if date_match:
@@ -133,12 +145,11 @@ def main():
         properties = {
             'args': args,
             'image': image,
+            'result_image': result_image,
             'price': prices_matches[0] if prices_matches else 0,
             'over_limit': False,
             'date': date if date_match else None,
             'text': text,
-            'username': args.username,
-            'password': args.password,
             'api_key': api_key,
         }
 
@@ -150,7 +161,7 @@ def main():
         if args.show_image:
             named_window = cv2.namedWindow('Preview', cv2.WINDOW_NORMAL)
             cv2.resizeWindow('Preview', 1000, 1000)
-            cv2.imshow('Preview', resultImage)
+            cv2.imshow('Preview', result_image)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
@@ -164,6 +175,8 @@ def main():
         do_input_action(properties)
 
 def print_results(properties):
+    clear()
+
     print(f'Results for "{colors.BOLD}{properties["image"]}{colors.END}"\n')
 
     if properties['args'].show_text:
@@ -217,14 +230,12 @@ def do_input_action(properties):
 
 def submit(properties):
     token = authenticate(properties['api_key'],
-        properties['username'], properties['password'])
+        properties['args'].username, properties['args'].password)
     response = submit_expenses(properties['api_key'], token, properties)
-
-    clear()
 
     if response.status_code is not 201:
         print_results(properties)
-        print(f'{colors.RED}Submiting expenses failed ({response.status_code}){colors.END}')
+        print(f'{colors.RED}Submiting expenses failed ({response.status_code} {response.json().get("message")}){colors.END}')
         do_input_action(properties)
 
 def skip(properties):
@@ -236,15 +247,22 @@ def set_price(properties):
     except ValueError:
         pass
 
-    clear()
     print_results(properties)
     do_input_action(properties)
 
 def set_date(properties):
     properties['date'] = input('Set date (YYYY-MM-DD): ')
 
-    clear()
     print_results(properties)
+    do_input_action(properties)
+
+def show_image(properties):
+    named_window = cv2.namedWindow('Preview', cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('Preview', 1000, 1000)
+    cv2.imshow('Preview', properties['result_image'])
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
     do_input_action(properties)
 
 def exit(properties=None):
